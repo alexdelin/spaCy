@@ -81,11 +81,17 @@ def get_features(docs, max_length):
 
 def train(train_texts, train_labels, dev_texts, dev_labels,
         lstm_shape, lstm_settings, lstm_optimizer, batch_size=100, nb_epoch=5,
-        by_sentence=True):
+        by_sentence=True, model=None):
     print("Loading spaCy")
     nlp = spacy.load('en', entity=False)
     embeddings = get_embeddings(nlp.vocab)
-    model = compile_lstm(embeddings, lstm_shape, lstm_settings)
+    if not model:
+        print('Creating a New Model')
+        model = compile_lstm(embeddings, lstm_shape, lstm_settings)
+    else:
+        print('Using an Existing Model')
+        model.compile(optimizer=Adam(lr=lstm_settings['lr']), loss='binary_crossentropy',
+          metrics=['accuracy'])
     print("Parsing texts...")
     train_docs = list(nlp.pipe(train_texts, batch_size=5000, n_threads=3))
     dev_docs = list(nlp.pipe(dev_texts, batch_size=5000, n_threads=3))
@@ -175,48 +181,78 @@ def read_data(data_dir, limit=0):
     return zip(*examples) # Unzips into two lists
 
 
-@plac.annotations(
-    train_dir=("Location of training file or directory"),
-    dev_dir=("Location of development file or directory"),
-    model_dir=("Location of output model directory",),
-    is_runtime=("Demonstrate run-time usage", "flag", "r", bool),
-    nr_hidden=("Number of hidden units", "option", "H", int),
-    max_length=("Maximum sentence length", "option", "L", int),
-    dropout=("Dropout", "option", "d", float),
-    learn_rate=("Learn rate", "option", "e", float),
-    nb_epoch=("Number of training epochs", "option", "i", int),
-    batch_size=("Size of minibatches for training LSTM", "option", "b", int),
-    nr_examples=("Limit to N examples", "option", "n", int)
-)
-def main(model_dir, train_dir, dev_dir,
-         is_runtime=False,
-         nr_hidden=64, max_length=100, # Shape
-         dropout=0.5, learn_rate=0.001, # General NN config
-         nb_epoch=500, batch_size=1000, nr_examples=-1):  # Training params
+
+def evaluate_test_content(model_dir, dev_dir, max_length):
+
+    model_dir = pathlib.Path(model_dir)
+    dev_dir = pathlib.Path(dev_dir)
+
+    dev_texts, dev_labels = read_data(dev_dir)
+    acc = evaluate(model_dir, dev_texts, dev_labels, max_length=max_length)
+    print(acc)
+
+
+def create_new_training(model_dir, dev_dir, train_dir,
+        nr_hidden=64, max_length=100,
+        dropout=0.5, learn_rate=0.001,
+        nb_epoch=500, batch_size=1000, nr_examples=1):
+
     model_dir = pathlib.Path(model_dir)
     train_dir = pathlib.Path(train_dir)
     dev_dir = pathlib.Path(dev_dir)
-    if is_runtime:
-        dev_texts, dev_labels = read_data(dev_dir)
-        acc = evaluate(model_dir, dev_texts, dev_labels, max_length=max_length)
-        print(acc)
-    else:
-        print("Read data")
-        train_texts, train_labels = read_data(train_dir, limit=nr_examples)
-        dev_texts, dev_labels = read_data(dev_dir, limit=nr_examples)
-        train_labels = numpy.asarray(train_labels, dtype='int32')
-        dev_labels = numpy.asarray(dev_labels, dtype='int32')
-        lstm = train(train_texts, train_labels, dev_texts, dev_labels,
-                     {'nr_hidden': nr_hidden, 'max_length': max_length, 'nr_class': 1},
-                     {'dropout': 0.5, 'lr': learn_rate},
-                     {},
-                     nb_epoch=nb_epoch, batch_size=batch_size)
-        weights = lstm.get_weights()
-        with (model_dir / 'model').open('wb') as file_:
-            pickle.dump(weights[1:], file_)
-        with (model_dir / 'config.json').open('wb') as file_:
-            file_.write(lstm.to_json())
+
+    print("Read data")
+    train_texts, train_labels = read_data(train_dir, limit=nr_examples)
+    dev_texts, dev_labels = read_data(dev_dir, limit=nr_examples)
+    train_labels = numpy.asarray(train_labels, dtype='int32')
+    dev_labels = numpy.asarray(dev_labels, dtype='int32')
+
+    lstm = train(train_texts, train_labels, dev_texts, dev_labels,
+                 {'nr_hidden': nr_hidden, 'max_length': max_length, 'nr_class': 1},
+                 {'dropout': 0.5, 'lr': learn_rate},
+                 {},
+                 nb_epoch=nb_epoch, batch_size=batch_size, model=None)
+    weights = lstm.get_weights()
+    with (model_dir / 'model').open('wb') as file_:
+        pickle.dump(weights[1:], file_)
+    with (model_dir / 'config.json').open('wb') as file_:
+        file_.write(lstm.to_json())
 
 
-if __name__ == '__main__':
-    plac.call(main)
+def continue_training(model_dir, dev_dir, train_dir,
+        nr_hidden=64, max_length=100,
+        dropout=0.5, learn_rate=0.001,
+        nb_epoch=500, batch_size=1000, nr_examples=1):
+
+    model_dir = pathlib.Path(model_dir)
+    train_dir = pathlib.Path(train_dir)
+    dev_dir = pathlib.Path(dev_dir)
+
+    print("Read data")
+    train_texts, train_labels = read_data(train_dir, limit=nr_examples)
+    dev_texts, dev_labels = read_data(dev_dir, limit=nr_examples)
+    train_labels = numpy.asarray(train_labels, dtype='int32')
+    dev_labels = numpy.asarray(dev_labels, dtype='int32')
+
+    with (model_dir / 'config.json').open() as file_:
+        lstm_model = model_from_json(file_.read())
+    with (model_dir / 'model').open('rb') as file_:
+            lstm_weights = pickle.load(file_)
+
+    nlp = spacy.load('en')
+    embeddings = get_embeddings(nlp.vocab)
+    lstm_model.set_weights([embeddings] + lstm_weights)
+
+    lstm_model = train(train_texts, train_labels, dev_texts, dev_labels,
+                 {'nr_hidden': nr_hidden, 'max_length': max_length, 'nr_class': 1},
+                 {'dropout': 0.5, 'lr': learn_rate},
+                 {},
+                 nb_epoch=nb_epoch, batch_size=batch_size, model=lstm_model)
+
+    weights = lstm_model.get_weights()
+    with (model_dir / 'model').open('wb') as file_:
+        pickle.dump(weights[1:], file_)
+    with (model_dir / 'config.json').open('wb') as file_:
+        file_.write(lstm_model.to_json())
+
+
