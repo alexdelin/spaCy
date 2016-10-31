@@ -49,6 +49,7 @@ class SentimentAnalyser(object):
 
     def set_sentiment(self, doc, y):
         doc.sentiment = float(y[0])
+        print doc.sentiment
         # Sentiment has a native slot for a single float.
         # For arbitrary data storage, there's:
         # doc.user_data['my_data'] = y
@@ -91,7 +92,7 @@ def train(train_texts, train_labels, dev_texts, dev_labels,
     if by_sentence:
         train_docs, train_labels = get_labelled_sentences(train_docs, train_labels)
         dev_docs, dev_labels = get_labelled_sentences(dev_docs, dev_labels)
-        
+
     train_X = get_features(train_docs, lstm_shape['max_length'])
     dev_X = get_features(dev_docs, lstm_shape['max_length'])
     model.fit(train_X, train_labels, validation_data=(dev_X, dev_labels),
@@ -137,15 +138,27 @@ def evaluate(model_dir, texts, labels, max_length=100):
         '''
         return [nlp.tagger, nlp.parser, SentimentAnalyser.load(model_dir, nlp,
                                                                max_length=max_length)]
-    
+
     nlp = spacy.load('en')
     nlp.pipeline = create_pipeline(nlp)
 
     correct = 0
-    i = 0 
+    i = 0
     for doc in nlp.pipe(texts, batch_size=1000, n_threads=4):
-        correct += bool(doc.sentiment >= 0.5) == bool(labels[i])
+        print bool(labels[i])
+        correct += bool(doc.sentiment >= 0) == bool(labels[i])
+
+
+        # More Verbose output
+        if bool(doc.sentiment >= 0) == bool(labels[i]):
+            # Got it right
+            print 'Correct: sentiment {} ({}) of document {}'.format(bool(labels[i]), doc.sentiment, doc.text)
+        else:
+            # Got it wrong
+            print 'Wrong: got sentiment {} ({}) of document {}'.format(bool(doc.sentiment >= 0.5), doc.sentiment, doc.text)
+
         i += 1
+
     return float(correct) / i
 
 
@@ -179,7 +192,7 @@ def main(model_dir, train_dir, dev_dir,
          is_runtime=False,
          nr_hidden=64, max_length=100, # Shape
          dropout=0.5, learn_rate=0.001, # General NN config
-         nb_epoch=5, batch_size=100, nr_examples=-1):  # Training params
+         nb_epoch=500, batch_size=1000, nr_examples=-1):  # Training params
     model_dir = pathlib.Path(model_dir)
     train_dir = pathlib.Path(train_dir)
     dev_dir = pathlib.Path(dev_dir)
