@@ -81,7 +81,7 @@ def get_features(docs, max_length):
 
 def train(train_texts, train_labels, dev_texts, dev_labels,
         lstm_shape, lstm_settings, lstm_optimizer, batch_size=100, nb_epoch=5,
-        by_sentence=True, model=None):
+        by_sentence=False, model=None):
     print("Loading spaCy")
     nlp = spacy.load('en', entity=False)
     embeddings = get_embeddings(nlp.vocab)
@@ -93,6 +93,8 @@ def train(train_texts, train_labels, dev_texts, dev_labels,
         model.compile(optimizer=Adam(lr=lstm_settings['lr']), loss='binary_crossentropy',
           metrics=['accuracy'])
     print("Parsing texts...")
+    print('got -------------- training docs----- {}'.format(len(train_texts)))
+    print('got --------------- dev docs ------------------ {}'.format(len(dev_texts)))
     train_docs = list(nlp.pipe(train_texts, batch_size=5000, n_threads=3))
     dev_docs = list(nlp.pipe(dev_texts, batch_size=5000, n_threads=3))
     if by_sentence:
@@ -223,6 +225,8 @@ def continue_training(model_dir, dev_dir, train_dir,
         nr_hidden=64, max_length=100,
         dropout=0.5, learn_rate=0.001,
         nb_epoch=500, batch_size=1000, nr_examples=1):
+
+    print('Using Config: Model - {}, Dev - {}, Train - {}'.format(model_dir, dev_dir, train_dir))
 
     model_dir = pathlib.Path(model_dir)
     train_dir = pathlib.Path(train_dir)
