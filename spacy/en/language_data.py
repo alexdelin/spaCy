@@ -102,8 +102,8 @@ TOKENIZER_PREFIXES = r''', " ( [ { * < $ £ “ ' `` ` # US$ C$ A$ a- ‘ .... .
 
 
 TOKENIZER_SUFFIXES = (r''', \" \) \] \} \* \! \? % \$ > : ; ' ” '' 's 'S ’s ’S ’''' 
-                    '''\.\. \.\.\. \.\.\.\. (?<=[a-z0-9)\]"'%\)])\. '''
-                    '''(?<=[0-9])km''').strip().split()
+                      r'''\.\. \.\.\. \.\.\.\. (?<=[a-z0-9)\]”"'%\)])\. '''
+                      r'''(?<=[0-9])km''').strip().split()
 
 
 TOKENIZER_INFIXES = (r'''\.\.\.+ (?<=[a-z])\.(?=[A-Z]) (?<=[a-zA-Z])-(?=[a-zA-z]) '''
@@ -112,6 +112,16 @@ TOKENIZER_INFIXES = (r'''\.\.\.+ (?<=[a-z])\.(?=[A-Z]) (?<=[a-zA-Z])-(?=[a-zA-z]
 
 
 TOKENIZER_EXCEPTIONS = {
+  "and/or": [
+      {
+          "F": "and/or",
+          "L": "and/or",
+          "pos": "CC"
+        }],
+  "Ph.D.": [
+    {
+        "F": "Ph.D."
+    }],
   "d.": [
     {
       "F": "d."

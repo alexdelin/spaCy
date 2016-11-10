@@ -62,9 +62,18 @@ class BaseDefaults(object):
     @classmethod
     def create_tokenizer(cls, nlp=None):
         rules = cls.tokenizer_exceptions
-        prefix_search  = util.compile_prefix_regex(cls.prefixes).search
-        suffix_search  = util.compile_suffix_regex(cls.suffixes).search
-        infix_finditer = util.compile_infix_regex(cls.infixes).finditer
+        if cls.prefixes:
+            prefix_search  = util.compile_prefix_regex(cls.prefixes).search
+        else:
+            prefix_search = None
+        if cls.suffixes:
+            suffix_search  = util.compile_suffix_regex(cls.suffixes).search
+        else:
+            suffix_search = None
+        if cls.infixes:
+            infix_finditer = util.compile_infix_regex(cls.infixes).finditer
+        else:
+            infix_finditer = None
         vocab = nlp.vocab if nlp is not None else cls.create_vocab(nlp)
         return Tokenizer(nlp.vocab, rules=rules,
                          prefix_search=prefix_search, suffix_search=suffix_search,
@@ -275,7 +284,7 @@ class Language(object):
             self.make_doc = overrides['make_doc']
         elif 'create_make_doc' in overrides:
             self.make_doc = overrides['create_make_doc'](self)
-        else:
+        elif not hasattr(self, 'make_doc'):
             self.make_doc = lambda text: self.tokenizer(text)
         if 'pipeline' in overrides:
             self.pipeline = overrides['pipeline']
@@ -293,13 +302,14 @@ class Language(object):
             text (unicode): The text to be processed.
 
         Returns:
-            tokens (spacy.tokens.Doc):
+            doc (Doc): A container for accessing the annotations.
 
-        >>> from spacy.en import English
-        >>> nlp = English()
-        >>> tokens = nlp('An example sentence. Another example sentence.')
-        >>> tokens[0].orth_, tokens[0].head.tag_
-        ('An', 'NN')
+        Example:
+            >>> from spacy.en import English
+            >>> nlp = English()
+            >>> tokens = nlp('An example sentence. Another example sentence.')
+            >>> tokens[0].orth_, tokens[0].head.tag_
+            ('An', 'NN')
         """
         doc = self.make_doc(text)
         if self.entity and entity:
@@ -314,6 +324,16 @@ class Language(object):
         return doc
 
     def pipe(self, texts, tag=True, parse=True, entity=True, n_threads=2, batch_size=1000):
+        '''Process texts as a stream, and yield Doc objects in order.
+        
+        Supports GIL-free multi-threading.
+        
+        Arguments:
+            texts (iterator)
+            tag (bool)
+            parse (bool)
+            entity (bool)
+        '''
         skip = {self.tagger: not tag, self.parser: not parse, self.entity: not entity}
         stream = (self.make_doc(text) for text in texts)
         for proc in self.pipeline:
